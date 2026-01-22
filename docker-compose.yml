@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # ====== Databases ======
+  postgres-edgepos:
+    image: postgres:15
+    container_name: edgepos-postgres-auth
+    environment:
+      POSTGRES_DB: edge_pos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d edge_pos -h localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    ports:
+      - "5432:5432"
+    networks:
+      - dev-net
+
+  redis-auth:
+    image: redis:7.4.0
+    container_name: edgepos-redis-auth
+    environment:
+      - REDIS_DATABASES=0
+      - REDIS_PASSWORD=qwerty12345678
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    ports:
+      - '6379:6379'
+    networks:
+      - dev-net
+
+  # ====== Message Broker ======
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    container_name: edgepos-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      # внешний доступ (для микросервисов вне docker-compose)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 3s
+        max_attempts: 3
+        window: 120s
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "echo > /dev/tcp/localhost/9092" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+    networks:
+      - dev-net
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.1
+    container_name: edgepos-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: [ "CMD", "echo", "ruok", "|", "nc", "localhost", "2181" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "2181:2181"
+    networks:
+      - dev-net
+
+  # ====== Elasticsearch for Search Service ======
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.2
+    container_name: edgepos-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cat/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - dev-net
+
+
+#  frontend:
+#    build:
+#      context: ./frontend
+#      dockerfile: Dockerfile
+#    container_name: frontend
+#    deploy:
+#      restart_policy:
+#        condition: on-failure
+#        delay: 3s
+#        max_attempts: 3
+#        window: 120s
+#    ports:
+#      - "8080:8080"
+#    networks:
+#      - dev-net
+
+networks:
+  dev-net:
+    driver: bridge

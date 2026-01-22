@@ -1,0 +1,48 @@
+server:
+  port: 9002
+
+spring:
+  application:
+    name: warehouse-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/edge_pos}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate # Managed by Liquibase
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  liquibase:
+    enabled: true
+    change-log: classpath:database/db.changelog.yaml
+
+  auth-types:
+    auth-header-enabled: true
+    client-credentials-enabled: true
+    authorization-code-enabled: true
+
+  security:
+    oauth2:
+      resourceserver:
+        opaquetoken:
+          client-id: j-service-client
+          client-secret: j-service-client
+          introspection-uri: ${SSO_URL:http://auth-service:9001}/oauth2/token-info
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000
